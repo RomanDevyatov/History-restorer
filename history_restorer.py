@@ -18,6 +18,12 @@ formatter = logging.Formatter(
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+logging.basicConfig(filename='log.log',
+                    filemode='a',
+                    format='%(asctime)s - %(levelname)s - %(filename)s:%(funcName)s - %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
+
 CHROME_BROWSER_TYPE = "chrome"
 FIREFOX_BROWSER_TYPE = "firefox"
 
@@ -35,21 +41,21 @@ FORMAT = '%Y-%m-%d %H:%M:%S'
 
 
 def get_sql_request(browser_type: str, dateFrom: str, dateTo: str) -> str:
-    queryString = ""
+    query_string = ""
 
     if browser_type == CHROME_BROWSER_TYPE:
-        queryString = "SELECT url, datetime(last_visit_time / 1000000 + (strftime('%s', '1601-01-01')), 'unixepoch', 'localtime') as local_last_visit_time " \
+        query_string = "SELECT url, datetime(last_visit_time / 1000000 + (strftime('%s', '1601-01-01')), 'unixepoch', 'localtime') as local_last_visit_time " \
                       "FROM urls " \
                       "WHERE local_last_visit_time >= " + "'" + dateFrom + "' AND local_last_visit_time < " + "'" + dateTo + "' "\
                       "AND url LIKE '%hh.ru%'" + ";"
     elif browser_type == FIREFOX_BROWSER_TYPE:
-        queryString = "SELECT url, datetime(last_visit_date / 1000000, 'unixepoch','localtime') as local_last_visit_time " \
+        query_string = "SELECT url, datetime(last_visit_date / 1000000, 'unixepoch','localtime') as local_last_visit_time " \
                       "FROM moz_places " \
                       "WHERE local_last_visit_time >= " + "'" + dateFrom + "' AND local_last_visit_time < " + "'" + dateTo + "' "\
                       "AND url LIKE '%hh.ru%' " \
                       "AND visit_count > 0" + ";"
 
-    return queryString
+    return query_string
 
 
 def get_history_set(browser_type: str, date_from: str, date_to: str) -> Set[str]:
@@ -103,7 +109,7 @@ def get_diff_between_sets(first: Set[str], second: Set[str]):
     return first.difference(second)
 
 
-def create_and_wrote_file(username: str, path_to_history_folder: str, output_from_db: Set[str], date_str: str) -> None:
+def create_and_write_file(username: str, path_to_history_folder: str, output_from_db: Set[str], date_str: str) -> None:
     file_name = str(username) + "_historyRes_" + str(date_str) + ".txt"
     file_path = os.path.join(path_to_history_folder, file_name)
 
@@ -118,11 +124,13 @@ def create_and_wrote_file(username: str, path_to_history_folder: str, output_fro
     new_lines_set = get_diff_between_sets(output_from_db, from_txt_set)
 
     if new_lines_set is not None and len(new_lines_set) > 0:
-        new_lines_str = '\n'.join(new_lines_set)
-        logger.info(f"Adding these lines to res hist txt file: \n {new_lines_str}")
+        new_lines_str = ''.join(new_lines_set)
+
+        logger.info(f"Adding these new_lines_str (one string) to res hist txt file: \n{new_lines_str}")
         text_file.write(new_lines_str)
     else:
         logger.info(f"No new lines: new_lines_set is None or length == 0")
+
     text_file.close()
 
 
@@ -133,7 +141,8 @@ def get_user_name_list(users_folder_path) -> List[str]:
                    if os.path.isdir(os.path.join(users_folder_path, name))]
 
     users_list = [elem for elem in sub_folders if elem not in exclude]
-    users_list = [elem for elem in users_list if "$" not in elem]
+
+    users_list = [username for username in users_list if not username.startswith("$")]
 
     return users_list
 
@@ -158,12 +167,12 @@ def copy_history_content_to_res_gist_folder(username: str, path_to_history_folde
                 logger.info(f"get_history_set: from: {date_from_tmp}, to: {date_to_tmp}")
                 res_hist_set = get_history_set(browser_type, str(date_from_tmp), str(date_to_tmp))
 
-                create_and_wrote_file(username, path_to_history_folder, res_hist_set, date_from_tmp.strftime("%Y-%m-%d"))
+                create_and_write_file(username, path_to_history_folder, res_hist_set, date_from_tmp.strftime("%Y-%m-%d"))
                 logger.info(f"----------------------")
         elif days == 0:  # < 1 get records inside a day
             logger.info(f"************************")
             res_hist_set = get_history_set(browser_type, str(date_from_datetime), str(date_to_datetime))
-            create_and_wrote_file(username, path_to_history_folder, res_hist_set,
+            create_and_write_file(username, path_to_history_folder, res_hist_set,
                                   date_from_datetime.strftime("%Y-%m-%d"))
             logger.info(f"----------------------")
     except Exception:
@@ -206,23 +215,28 @@ def main(users_folder_path: str, browser_type: str, date_from: str, date_to: str
     logger.info("users: " + str(users))
 
     for user in users:
-        logger.info("Current user: " + user)
-        # set paths to db
-        logger.info("running get_path_to_history_db_by_browser_type(). Processing...")
-        get_path_to_history_db_by_browser_type(browser_type, users_folder_path, user)
+        try:
+            logger.info("Current user: " + user)
+            # set paths to db
+            logger.info("running get_path_to_history_db_by_browser_type(). Processing...")
+            get_path_to_history_db_by_browser_type(browser_type, users_folder_path, user)
 
-        logger.info(f"copy_file(). {db_path_str} to {db_copy_path_str}")
-        copy_file(db_path_str, db_copy_path_str)
+            logger.info(f"copy_file(). {db_path_str} to {db_copy_path_str}")
+            copy_file(db_path_str, db_copy_path_str)
 
-        logger.info(f"copy_history_content_to_res_gist_folder(). Processing...")
-        copy_history_content_to_res_gist_folder(user, path_to_history_folder, date_from, date_to, browser_type)
-        logger.info(f"copy_history_content_to_res_gist_folder(). Done.")
+            logger.info(f"copy_history_content_to_res_gist_folder(). Processing...")
+            copy_history_content_to_res_gist_folder(user, path_to_history_folder, date_from, date_to, browser_type)
+            logger.info(f"copy_history_content_to_res_gist_folder(). Done.")
 
-        logger.info(f"Deleting. db_copy_path_str: {db_copy_path_str}")
-        delete_file(db_copy_path_str)
+            logger.info(f"Deleting. db_copy_path_str: {db_copy_path_str}")
+            delete_file(db_copy_path_str)
+        except Exception:
+            logger.error("Error main: ")
+            raise
 
 
 if __name__ == "__main__":
+    logger.info("Start time: " + str(datetime.now()))
     logger.info("Args: " + str(sys.argv))
     if len(sys.argv) > 5:
         main(users_folder_path=str(sys.argv[1]),

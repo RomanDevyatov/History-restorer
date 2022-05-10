@@ -1,0 +1,8 @@
+# ignore data directory except customer mapping file
+.ipynb_checkpoints/
+__pycache__/
+.vscode/
+*.code-workspace
+.idea
+.DS_Store
+*.iml
